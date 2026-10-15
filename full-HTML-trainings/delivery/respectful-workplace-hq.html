@@ -60,7 +60,7 @@
   .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--edge)}
   .btn-ghost:hover{border-color:var(--brand)}
   .actions{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap}
-  /* Sorting (Missions 1 and 2) */
+  /* Sorting (Mission 1) */
   .lanes{display:grid;gap:14px;margin-top:16px}
   .lanes.three{grid-template-columns:repeat(3,1fr)}
   .lanes.two{grid-template-columns:1fr 1fr}
@@ -196,7 +196,7 @@ const state = {
   xp:0, xpMax:500, streak:0, rank:'Newcomer',
   missions:[
     {id:'m1',title:'Response Levels',desc:'Match each situation to the right action',done:false,icon:'🧭'},
-    {id:'m2',title:'Data Zones',desc:'Confidential vs shareable people data',done:false,icon:'🔒'},
+    {id:'m2',title:'The Moment of Choice',desc:'Make a call in a realistic workplace scenario',done:false,icon:'⚖️'},
     {id:'m3',title:'Myth Radar',desc:'Spot myths vs facts',done:false,icon:'📡'},
     {id:'m4',title:'Behavior Deck',desc:'Do or Don\'t cards',done:false,icon:'🃏'},
     {id:'m5',title:'People Partner',desc:'Scenario challenge',done:false,icon:'👑'}
@@ -469,39 +469,101 @@ function mission1(){
     onSuccess:()=>completeMission('m1','b1'),failMsg:'Review the cards marked "Try again".'});
 }
 
-/* ========= MISSION 2: DATA ZONES ========= */
+/* ========= MISSION 2: THE MOMENT OF CHOICE ========= */
 function mission2(){
-  const targets=[
-    {key:'confidential',label:'🔒 Confidential People Data',hint:'Need-to-know only · never share casually'},
-    {key:'shareable',label:'📢 Shareable Internally',hint:'OK to share with colleagues'}
+  const steps=[
+    {
+      title:'The meeting comment',
+      scene:'During a team meeting, Jordan makes a dismissive joke about a colleague’s accent. A few people laugh. The colleague goes quiet and stops contributing.',
+      prompt:'What is the most constructive next step?',
+      options:[
+        {label:'Laugh along so the meeting can move on.',good:false,feedback:'This may signal that the comment is acceptable and leave the colleague unsupported. Keeping the meeting comfortable for everyone should not come at the expense of someone’s dignity.'},
+        {label:'Calmly interrupt and redirect: “Let’s keep comments respectful. Can we return to the idea?”',good:true,feedback:'Good choice. A brief, calm intervention sets a boundary without escalating the moment. You can also check in privately with the colleague afterwards.'},
+        {label:'Call Jordan a bully in front of the whole team.',good:false,feedback:'It is reasonable to challenge the behaviour, but labelling the person can make the exchange more adversarial. Focus first on the specific comment and its impact.'}
+      ]
+    },
+    {
+      title:'The private check-in',
+      scene:'After the meeting, you have a quiet moment with the colleague. They tell you the comment was upsetting, but they are unsure whether they want to raise it formally.',
+      prompt:'How should you respond?',
+      options:[
+        {label:'Listen, acknowledge the impact, and ask what support would be helpful.',good:true,feedback:'Good choice. Listening without pressure respects the colleague’s agency. Avoid promising a particular outcome; help them understand available support and options.'},
+        {label:'Tell them they must report Jordan immediately.',good:false,feedback:'Pressuring someone to take a particular route can remove their sense of control. Explain options and relevant reporting requirements, and follow your organisation’s procedures.'},
+        {label:'Promise to keep it completely secret, whatever happens.',good:false,feedback:'Avoid absolute promises of confidentiality. Explain sensitively that information should be shared only with appropriate people, while some concerns may need to be acted on under workplace procedures.'}
+      ]
+    },
+    {
+      title:'Choosing a follow-up',
+      scene:'The colleague says they would appreciate support, but they do not want the incident discussed casually across the team. You are not the person responsible for investigating concerns.',
+      prompt:'What is the best way forward?',
+      options:[
+        {label:'Tell a trusted teammate the details so they can keep an eye on Jordan.',good:false,feedback:'Sharing identifiable details informally can breach privacy and fuel speculation. Keep information on a need-to-know basis.'},
+        {label:'Agree on a supportive next step, explain appropriate options, and involve the designated contact if needed.',good:true,feedback:'Good choice. Respect the colleague, avoid investigating beyond your role, and connect them with the appropriate manager, HR contact or reporting channel according to your organisation’s process.'},
+        {label:'Do nothing further because you already interrupted the comment.',good:false,feedback:'The immediate intervention helped, but it may not be the end of the issue. A respectful check-in and clear information about support can help the colleague decide what they need next.'}
+      ]
+    }
   ];
+  let stepIndex=0, score=0, answered=false;
   $('#stage').innerHTML=`
     <div class="stage">
-      <h1>🔒 Mission 2 · Data Zones</h1>
-      <p class="lead">Place each piece of information in the correct zone. <b>Personal employee data</b> must only be shared on a strict need-to-know basis.</p>
-      ${HOWTO}
-      <div class="lanes two">${laneHTML(targets[0],'warn-zone')}${laneHTML(targets[1],'ok-zone')}</div>
-      <div class="pool-wrap">
-        <h2 id="pool2-title">Information to place</h2>
-        <ul class="drag-pool" id="pool2" aria-labelledby="pool2-title"></ul>
+      <h1 tabindex="-1">⚖️ Mission 2 · The Moment of Choice</h1>
+      <p class="lead">Work through a realistic workplace moment. Your choices shape how the situation unfolds. There may be more than one way to help, but some responses are more respectful and constructive than others.</p>
+      <div class="scenario" id="choiceScenario" aria-live="polite">
+        <p style="margin:0 0 8px;color:var(--brand);font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase" id="choiceProgress">Decision 1 of 3</p>
+        <h2 id="choiceTitle"></h2>
+        <p id="choiceScene" style="margin:10px 0 0;line-height:1.7"></p>
+        <p id="choicePrompt" style="margin:18px 0 0;font-weight:700"></p>
+        <div class="options" id="choiceOptions"></div>
+        <div class="feedback" id="choiceFeedback" role="status" tabindex="-1"></div>
+        <div class="actions"><button class="btn btn-primary" id="choiceNext" hidden>Next decision →</button></div>
       </div>
-      <div class="actions">
-        <button class="btn btn-primary" id="check2">Verify zones</button>
-        <button class="btn btn-ghost" id="pool2-return">Return selected card to pool</button>
-      </div>
+      <p class="howto">There is no need to rush. Choose the response you think would best protect dignity, respect privacy, and connect people with appropriate support.</p>
     </div>`;
-  const items=[
-    {t:'A colleague\'s salary',a:'confidential'},
-    {t:'Reason for someone\'s medical leave',a:'confidential'},
-    {t:'An employee\'s home address',a:'confidential'},
-    {t:'An individual performance rating',a:'confidential'},
-    {t:'Team organization chart',a:'shareable'},
-    {t:'Office holiday calendar',a:'shareable'},
-    {t:'Published internal job posting',a:'shareable'},
-    {t:'A colleague\'s work email address',a:'shareable'}
-  ].sort(()=>Math.random()-.5);
-  sortingActivity({items,targets,poolId:'pool2',checkId:'check2',total:8,
-    onSuccess:()=>completeMission('m2','b2'),failMsg:'Personal data stays need-to-know.'});
+  function renderStep(){
+    const step=steps[stepIndex]; answered=false;
+    $('#choiceProgress').textContent=`Decision ${stepIndex+1} of ${steps.length}`;
+    $('#choiceTitle').textContent=step.title;
+    $('#choiceScene').textContent=step.scene;
+    $('#choicePrompt').textContent=step.prompt;
+    $('#choiceFeedback').textContent='';
+    $('#choiceNext').hidden=true;
+    $('#choiceNext').textContent=stepIndex===steps.length-1?'Complete mission →':'Next decision →';
+    const options=$('#choiceOptions'); options.innerHTML='';
+    step.options.forEach((option,index)=>{
+      const button=document.createElement('button');
+      button.type='button'; button.className='opt'; button.textContent=option.label;
+      button.addEventListener('click',()=>{
+        if(answered)return; answered=true;
+        if(option.good)score++;
+        Array.from(options.children).forEach(b=>b.disabled=true);
+        button.classList.add(option.good?'correct':'wrong');
+        const feedback=$('#choiceFeedback');
+        feedback.textContent=option.feedback;
+        feedback.style.borderLeftColor=option.good?'var(--ok)':'var(--warn)';
+        $('#choiceNext').hidden=false;
+        announce(`${option.good?'Helpful choice':'Consider this'}: ${option.feedback}`);
+        $('#choiceNext').focus();
+      });
+      options.appendChild(button);
+    });
+  }
+  $('#choiceNext').addEventListener('click',()=>{
+    if(!answered)return;
+    if(stepIndex<steps.length-1){stepIndex++;renderStep();$('#choiceTitle').focus?.();}
+    else{
+      const scenario=$('#choiceScenario');
+      const result=score===3
+        ?'You consistently chose responses that support dignity, privacy and appropriate follow-up.'
+        :score===2
+          ?'You made several constructive choices. Review the feedback to see how small decisions can affect trust, privacy and support.'
+          :'Workplace situations can be complicated. The key principles are to address behaviour respectfully, listen without pressure, protect privacy and use the appropriate support channels.';
+      scenario.innerHTML=`<p style="color:var(--brand);font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Scenario complete</p><h2 tabindex="-1" id="choiceResultTitle">${score} of 3 constructive choices</h2><p style="line-height:1.7">${result}</p><div class="feedback">Remember: focus on behaviour rather than labels, listen and avoid making promises you cannot keep, share information only with appropriate people, and follow your organisation’s policies and reporting routes.</div><div class="actions"><button class="btn btn-primary" id="finishChoice">Earn Guardian badge →</button><button class="btn btn-ghost" id="replayChoice">Replay scenario</button></div>`;
+      $('#finishChoice').addEventListener('click',()=>completeMission('m2','b2'));
+      $('#replayChoice').addEventListener('click',mission2);
+      $('#choiceResultTitle').focus();
+    }
+  });
+  renderStep();
 }
 
 /* ========= MISSION 3: MYTH RADAR ========= */
