@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Request Stream · Learning Game</title>
+<style>
+  :root{
+    --bg:#03040a; --panel:#0a0e1e; --ink:#e8f0ff; --muted:#a9b8d6; --edge:#6b80ab;
+    --p1:#00f0ff; --p2:#22e39a; --p3:#ffb020; --p4:#ff7a90; --p5:#a07cff; --focus:#ffd166;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+  .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+  #wrap{position:relative;width:100vw;height:100vh;display:grid;grid-template-rows:auto 1fr auto auto}
+  /* HUD */
+  .hud{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;z-index:5;font-family:'Consolas',monospace;flex-wrap:wrap}
+  .stats{display:flex;gap:12px;flex-wrap:wrap}
+  .stat{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:8px 16px;min-width:100px}
+  .stat b{color:var(--p1);font-size:22px;display:block}
+  .stat span.l{font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .lives{display:flex;gap:6px;align-items:center;margin-top:4px}
+  .heart{width:14px;height:14px;border-radius:50%;background:var(--p4);border:1px solid var(--p4)}
+  .heart.gone{background:transparent;border:1px dashed var(--edge)}
+  .lives-txt{font-size:13px;color:var(--ink);margin-left:6px}
+  .hud-btn{padding:10px 18px;border-radius:10px;border:1px solid var(--p1);background:var(--panel);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+  .hud-btn:hover{background:#0f1a33}
+  /* Arena */
+  .arena{position:relative;overflow:hidden;margin:0 20px;border:1px solid #1b2947;border-radius:14px;background:
+    linear-gradient(90deg,transparent calc(25% - 1px),rgba(0,240,255,.08) 25%,transparent calc(25% + 1px),transparent calc(50% - 1px),rgba(0,240,255,.08) 50%,transparent calc(50% + 1px),transparent calc(75% - 1px),rgba(0,240,255,.08) 75%,transparent calc(75% + 1px)),
+    linear-gradient(180deg,rgba(0,240,255,.02),rgba(160,124,255,.08))}
+  .arena h2{position:absolute;left:12px;top:8px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .packet{position:absolute;width:min(22%,250px);min-height:84px;transform:translateX(-50%);padding:12px 14px 10px;border-radius:12px;border:2px solid var(--edge);background:#111a33;color:var(--ink);font:inherit;text-align:center;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .packet:hover{border-color:var(--p1)}
+  .packet[aria-pressed="true"]{border:3px solid var(--focus);background:#2a2a14}
+  .packet .pl{display:block;font-weight:700;font-size:14px;line-height:1.35}
+  .packet .tk{display:block;margin-top:6px;font-family:'Consolas',monospace;font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase}
+  .packet .sel{display:none;font-size:11px;color:var(--focus);font-weight:700;margin-top:4px}
+  .packet[aria-pressed="true"] .sel{display:block}
+  /* Portals */
+  .portals{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:14px 20px 8px}
+  .portal{position:relative;min-height:84px;padding:12px 12px 12px 48px;border-radius:14px;border:2px solid;background:var(--panel);color:var(--ink);font:inherit;text-align:left;cursor:pointer;transition:transform .15s}
+  .portal:hover{transform:translateY(-2px);background:#0f1a33}
+  .portal .num{position:absolute;left:12px;top:12px;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'Consolas',monospace;font-weight:800;color:#03040a}
+  .portal .nm{display:block;font-weight:800;font-size:14px;letter-spacing:.5px}
+  .portal .ht{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+  .portal.flash-ok{box-shadow:0 0 0 4px rgba(34,227,154,.6)}
+  .portal.flash-bad{box-shadow:0 0 0 4px rgba(255,122,144,.6)}
+  /* Feedback */
+  .feedback{margin:0 20px 16px;min-height:62px;padding:12px 16px;border-radius:12px;border:1px solid var(--edge);border-left-width:6px;background:var(--panel);font-size:14px;line-height:1.5}
+  .feedback.good{border-color:var(--p2)}
+  .feedback.bad{border-color:var(--p4)}
+  .feedback h3{font-size:15px;margin-bottom:2px}
+  .feedback.good h3{color:var(--p2)}
+  .feedback.bad h3{color:var(--p4)}
+  .feedback p{color:var(--ink)}
+  .feedback .idle{color:var(--muted)}
+  .combo{position:absolute;top:12px;right:16px;font-size:22px;font-weight:900;color:var(--p3);font-family:'Consolas',monospace;pointer-events:none}
+  /* Screens */
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:radial-gradient(circle at 50% 30%,rgba(0,240,255,.08),transparent 60%),var(--bg);z-index:10;padding:40px 20px;text-align:center;overflow:auto}
+  .screen h1{font-size:56px;font-weight:900;letter-spacing:-2px;background:linear-gradient(135deg,var(--p1),var(--p5));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .screen h1:focus{outline:none}
+  .screen h1:focus-visible{outline:3px solid var(--focus)}
+  .screen .sub{font-size:20px;margin:6px 0 10px;color:var(--p1);font-weight:700}
+  .screen .tag{font-size:12px;letter-spacing:4px;color:var(--muted);text-transform:uppercase;margin-bottom:12px}
+  .screen p{color:var(--muted);max-width:680px;line-height:1.7;margin:10px auto}
+  .btn{padding:14px 36px;background:linear-gradient(135deg,var(--p1),var(--p5));color:#02121a;border:none;border-radius:12px;font-size:16px;font-weight:800;letter-spacing:1px;cursor:pointer;text-transform:uppercase;font-family:inherit}
+  .btn:hover{transform:translateY(-2px)}
+  .btn.ghost{background:transparent;border:1px solid var(--p1);color:var(--ink)}
+  .rules{background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:20px 24px;text-align:left;max-width:700px;width:100%;margin:16px 0;font-size:14px;line-height:1.7}
+  .rules h2{font-size:13px;letter-spacing:2px;color:var(--p1);text-transform:uppercase}
+  .rules p,.rules li{color:var(--ink);margin:6px 0}
+  .rules ul{padding-left:20px}
+  .legend{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0;list-style:none;padding:0!important}
+  .lg{display:flex;align-items:center;gap:10px;padding:10px;background:#0f1530;border-radius:8px;margin:0!important}
+  .lg .sw{width:26px;height:26px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;color:#03040a;font-family:'Consolas',monospace}
+  .lg small{color:var(--muted)}
+  fieldset{border:1px solid var(--edge);border-radius:10px;padding:10px 14px;margin-top:12px}
+  legend{padding:0 6px;color:var(--p1);font-weight:700;font-size:13px}
+  .opt-row{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0}
+  .opt-row label{display:flex;gap:8px;align-items:center;cursor:pointer}
+  input[type=radio],input[type=checkbox]{width:18px;height:18px;accent-color:var(--p1)}
+  .final{background:var(--panel);border:1px solid var(--edge);border-radius:12px;margin:18px auto;padding:20px 40px}
+  .final b{display:block;font-size:44px;color:var(--p1);font-family:'Consolas',monospace}
+  .final span{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .hidden{display:none!important}
+  @media (max-width:820px){
+    html,body{overflow:auto}
+    #wrap{height:auto;min-height:100vh}
+    .arena{height:60vh}
+    .portals{grid-template-columns:1fr 1fr}
+    .packet{width:44%}
+    .legend{grid-template-columns:1fr}
+    .screen h1{font-size:40px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header class="hud">
+    <div class="stats">
+      <div class="stat"><span class="l">Score</span><b id="score">0</b></div>
+      <div class="stat"><span class="l">Wave</span><b id="wave">1</b></div>
+      <div class="stat"><span class="l">Lives</span>
+        <div class="lives"><span id="hearts" aria-hidden="true" style="display:flex;gap:6px"></span><span class="lives-txt" id="livesTxt">3 of 3</span></div>
+      </div>
+      <div class="stat" id="progressStat"><span class="l">Requests</span><b id="progress">0/15</b></div>
+    </div>
+    <button class="hud-btn" id="pauseBtn" aria-keyshortcuts="P">⏸ Pause (P)</button>
+  </header>
+
+  <main class="arena" id="arena" aria-labelledby="arenaTitle">
+    <h2 id="arenaTitle">Incoming requests</h2>
+    <div class="combo hidden" id="combo" aria-hidden="true"></div>
+  </main>
+
+  <nav class="portals" id="portals" aria-label="Destinations"></nav>
+
+  <section class="feedback" id="feedback" aria-label="Feedback">
+    <p class="idle">Select a request, then choose where it should go. Feedback appears here.</p>
+  </section>
+</div>
+
+<div class="sr-only" role="status" aria-live="polite" id="live"></div>
+<div class="sr-only" role="alert" id="alert"></div>
+
+<!-- START -->
+<div class="screen" id="start" role="dialog" aria-modal="true" aria-labelledby="startTitle">
+  <div class="tag">People Services Arcade</div>
+  <h1 id="startTitle" tabindex="-1">REQUEST STREAM</h1>
+  <div class="sub">Route every request. Keep people moving.</div>
+  <p>Employee requests are streaming into the help desk. You are on duty: send each request to the right channel <b style="color:var(--ink)">before it reaches the bottom</b>.</p>
+  <div class="rules">
+    <h2>How to play</h2>
+    <ul>
+      <li>Read the request, then send it to one of the four destinations below.</li>
+      <li><b>Mouse or touch:</b> select a request, then select a destination.</li>
+      <li><b>Keyboard:</b> use Tab to reach a request and press Enter to select it, then Tab to a destination and press Enter. Or press 1 to 4 to route the selected request (or the lowest one if none is selected).</li>
+      <li>Press <b>P</b> or the Pause button at any time.</li>
+    </ul>
+    <ul class="legend">
+      <li class="lg"><span class="sw" style="background:var(--p1)" aria-hidden="true">1</span><span><b>1 · Self-Service</b><br><small>Portal &amp; intranet · do it yourself</small></span></li>
+      <li class="lg"><span class="sw" style="background:var(--p3)" aria-hidden="true">2</span><span><b>2 · Your Manager</b><br><small>Day-to-day team matters</small></span></li>
+      <li class="lg"><span class="sw" style="background:var(--p5)" aria-hidden="true">3</span><span><b>3 · HR Specialist</b><br><small>Confidential or personal cases</small></span></li>
+      <li class="lg"><span class="sw" style="background:var(--p4)" aria-hidden="true">4</span><span><b>4 · Speak-Up Channel</b><br><small>Misconduct · formal report</small></span></li>
+    </ul>
+    <p>Wrong routing costs 1 life and shows a short tip. You have 3 lives. Correct answers in a row build a combo bonus.</p>
+    <fieldset>
+      <legend>Game speed</legend>
+      <div class="opt-row">
+        <label><input type="radio" name="speed" value="0"> Untimed (requests don't move, 15 requests)</label>
+        <label><input type="radio" name="speed" value="0.6"> Relaxed</label>
+        <label><input type="radio" name="speed" value="1"> Standard</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Keyboard</legend>
+      <div class="opt-row">
+        <label><input type="checkbox" id="keysOn" checked> Use single-key shortcuts (1–4 and P)</label>
+      </div>
+    </fieldset>
+  </div>
+  <button class="btn" id="startBtn">▶ Start the stream</button>
+</div>
+
+<!-- PAUSE -->
+<div class="screen hidden" id="pause" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+  <div class="tag">Game paused</div>
+  <h1 id="pauseTitle" tabindex="-1">PAUSED</h1>
+  <p>Take your time. Nothing moves while the game is paused.</p>
+  <div style="display:flex;gap:14px;margin-top:16px;flex-wrap:wrap;justify-content:center">
+    <button class="btn" id="resumeBtn">▶ Resume</button>
+    <button class="btn ghost" id="quitBtn">End game</button>
+  </div>
+</div>
+
+<!-- END -->
+<div class="screen hidden" id="end" role="dialog" aria-modal="true" aria-labelledby="endTitle">
+  <div class="tag">Stream complete</div>
+  <h1 id="endTitle" tabindex="-1">GAME OVER</h1>
+  <div class="final"><span>Final score</span><b id="finalScore">0</b></div>
+  <p id="endStats"></p>
+  <p id="endMsg"></p>
+  <div style="margin-top:16px"><button class="btn" onclick="location.reload()">↻ Play again</button></div>
+</div>
+
+<script>
+/* =============== DATA =============== */
+const PORTALS=[
+  {key:'self',name:'SELF-SERVICE',color:'#00f0ff',hint:'Portal & intranet · do it yourself'},
+  {key:'manager',name:'YOUR MANAGER',color:'#ffb020',hint:'Day-to-day team matters'},
+  {key:'hr',name:'HR SPECIALIST',color:'#a07cff',hint:'Confidential or personal cases'},
+  {key:'speakup',name:'SPEAK-UP CHANNEL',color:'#ff7a90',hint:'Misconduct · formal report'}
+];
+const PACKETS=[
+  {payload:'Update my home address',task:'personal data',c:'self',fb:'Personal details like your address can usually be updated directly in the employee self-service portal.'},
+  {payload:'Download last month\'s payslip',task:'documents',c:'self',fb:'Payslips are available in self-service. No need to open a ticket.'},
+  {payload:'Check my remaining vacation days',task:'time off',c:'self',fb:'Your leave balance is visible in the self-service portal at any time.'},
+  {payload:'Find the parental leave policy',task:'policy lookup',c:'self',fb:'Policies are published on the intranet. Start there before asking someone.'},
+  {payload:'Sign up for a course in the learning catalog',task:'learning',c:'self',fb:'Most catalog courses can be booked directly in the learning platform.'},
+  {payload:'Swap a shift with a teammate next week',task:'scheduling',c:'manager',fb:'Shift swaps and team scheduling are agreed with your manager.'},
+  {payload:'Agree on my objectives for the year',task:'performance',c:'manager',fb:'Objectives are set together with your manager.'},
+  {payload:'Workload has become unmanageable',task:'support',c:'manager',fb:'Start with your manager: they can rebalance priorities and resources.'},
+  {payload:'Work from home on Friday for a delivery',task:'flexibility',c:'manager',fb:'One-off flexibility requests are usually agreed with your manager.'},
+  {payload:'Plan holiday cover across the team',task:'planning',c:'manager',fb:'Team cover planning is coordinated by the manager.'},
+  {payload:'Need a workplace adjustment for a health condition',task:'confidential',c:'hr',fb:'Health-related adjustments involve confidential data. An HR specialist handles them with care.'},
+  {payload:'Ongoing conflict with my manager',task:'relationship',c:'hr',fb:'If you can\'t resolve an issue with your manager, an HR specialist can support you confidentially.'},
+  {payload:'Personal situation affecting my work',task:'wellbeing',c:'hr',fb:'HR can explain confidential support options, such as an employee assistance program.'},
+  {payload:'Question about my pension or benefits case',task:'benefits',c:'hr',fb:'Individual benefits cases need an HR specialist who can review your details.'},
+  {payload:'Planning to return after long-term leave',task:'return to work',c:'hr',fb:'Return-to-work plans are coordinated with HR to make the transition smooth.'},
+  {payload:'Witnessed a colleague being harassed',task:'misconduct',c:'speakup',fb:'Harassment should be reported through the formal speak-up channel, which protects the people involved.'},
+  {payload:'Suspected fraud in expense claims',task:'integrity',c:'speakup',fb:'Possible fraud must be reported formally so it can be investigated properly.'},
+  {payload:'Pressured to falsify safety records',task:'compliance',c:'speakup',fb:'Never falsify records. Report the pressure through the speak-up channel.'},
+  {payload:'Discriminatory comments in a hiring panel',task:'fairness',c:'speakup',fb:'Discrimination is serious misconduct. Use the speak-up channel to report it.'}
+];
+const NAME={self:'Self-Service',manager:'Your Manager',hr:'HR Specialist',speakup:'Speak-Up Channel'};
+
+/* =============== STATE =============== */
+const S={running:false,paused:false,packets:[],spawnT:0,spawnRate:2600,speedMul:1,baseSpeed:38,
+  wave:1,score:0,combo:0,bestCombo:0,lives:3,selected:null,correct:0,routed:0,untimed:false,goal:15,keys:true,deck:[]};
+const $=id=>document.getElementById(id);
+const arena=$('arena');
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.querySelector(`input[name=speed][value="${reduceMotion?'0':'1'}"]`).checked=true;
+
+function say(msg){const l=$('live');l.textContent='';setTimeout(()=>l.textContent=msg,50);}
+function shout(msg){const a=$('alert');a.textContent='';setTimeout(()=>a.textContent=msg,50);}
+
+/* =============== PORTALS =============== */
+function buildPortals(){
+  const nav=$('portals'); nav.innerHTML='';
+  PORTALS.forEach((p,i)=>{
+    const b=document.createElement('button');
+    b.className='portal'; b.style.borderColor=p.color; b.dataset.i=i;
+    b.setAttribute('aria-keyshortcuts',String(i+1));
+    b.innerHTML=`<span class="num" style="background:${p.color}" aria-hidden="true">${i+1}</span><span class="nm">${p.name}</span><span class="ht">${p.hint}</span><span class="sr-only">. Shortcut key ${i+1}.</span>`;
+    b.onclick=()=>{
+      if(!S.running||S.paused) return;
+      const t=S.selected||lowest();
+      if(!t){say('No request to route yet.');return;}
+      route(t,i);
+    };
+    nav.appendChild(b);
+  });
+}
+function lowest(){return S.packets.slice().sort((a,b)=>b.y-a.y)[0];}
+
+/* =============== HUD =============== */
+function drawHearts(){
+  const el=$('hearts'); el.innerHTML='';
+  for(let i=0;i<3;i++){const d=document.createElement('span');d.className='heart'+(i>=S.lives?' gone':'');el.appendChild(d);}
+  $('livesTxt').textContent=`${Math.max(S.lives,0)} of 3`;
+}
+function updHud(){
+  $('score').textContent=S.score; $('wave').textContent=S.wave;
+  $('progress').textContent=`${S.routed}/${S.goal}`;
+}
+
+/* =============== PACKETS =============== */
+function nextTemplate(){
+  if(!S.deck.length) S.deck=PACKETS.slice().sort(()=>Math.random()-.5);
+  return S.deck.pop();
+}
+function spawnPacket(){
+  const t=nextTemplate();
+  const used=S.packets.map(p=>p.lane);
+  let lane=Math.floor(Math.random()*4);
+  for(let k=0;k<4&&used.includes(lane);k++) lane=(lane+1)%4;
+  const p={...t,lane,y:S.untimed?Math.max(40,arena.clientHeight*0.3):36,id:'pk'+Math.random().toString(36).slice(2)};
+  const b=document.createElement('button');
+  b.className='packet'; b.id=p.id; b.setAttribute('aria-pressed','false');
+  b.style.left=(lane*25+12.5)+'%'; b.style.top=p.y+'px';
+  b.innerHTML=`<span class="pl">${p.payload}</span><span class="tk">▸ ${p.task}</span><span class="sel" aria-hidden="true">SELECTED · choose a destination</span>`;
+  b.setAttribute('aria-label',`Request: ${p.payload}. Topic: ${p.task}.`);
+  b.onclick=()=>select(p);
+  arena.appendChild(b); p.el=b;
+  S.packets.push(p);
+  say(`New request: ${p.payload}.`);
+}
+function select(p){
+  if(!S.running||S.paused) return;
+  S.packets.forEach(q=>q.el.setAttribute('aria-pressed','false'));
+  if(S.selected===p){S.selected=null;say('Selection cleared.');return;}
+  S.selected=p; p.el.setAttribute('aria-pressed','true');
+  say(`Selected: ${p.payload}. Now choose a destination, 1 to 4.`);
+}
+function removePacket(p){
+  const hadFocus=document.activeElement===p.el;
+  p.el.remove();
+  S.packets=S.packets.filter(x=>x.id!==p.id);
+  if(S.selected===p) S.selected=null;
+  if(hadFocus){const n=lowest(); (n?n.el:document.querySelector('.portal')).focus();}
+}
+
+/* =============== ROUTING =============== */
+function route(p,i){
+  const ok=p.c===PORTALS[i].key;
+  const pb=document.querySelectorAll('.portal')[i];
+  pb.classList.add(ok?'flash-ok':'flash-bad'); setTimeout(()=>pb.classList.remove('flash-ok','flash-bad'),400);
+  S.routed++;
+  if(ok){
+    S.combo++; S.correct++; S.bestCombo=Math.max(S.bestCombo,S.combo);
+    S.score+=100+S.combo*10;
+    showFeedback(true,`✓ Correct: ${NAME[p.c]}`,p.fb);
+    const c=$('combo');
+    if(S.combo>=3){c.textContent='× '+S.combo+' COMBO';c.classList.remove('hidden');clearTimeout(S._ct);S._ct=setTimeout(()=>c.classList.add('hidden'),1200);}
+  } else {
+    S.combo=0; S.lives--;
+    showFeedback(false,`✗ Not quite. Best destination: ${NAME[p.c]}`,p.fb);
+    drawHearts();
+  }
+  removePacket(p); updHud();
+  checkEnd();
+  if(S.running&&S.untimed&&S.packets.length===0) spawnPacket();
+}
+function showFeedback(good,title,msg){
+  const f=$('feedback');
+  f.className='feedback '+(good?'good':'bad');
+  f.innerHTML=`<h3>${title}</h3><p>${msg}</p>`;
+  (good?say:shout)(`${title}. ${msg} Score ${S.score}. Lives ${Math.max(S.lives,0)} of 3.`);
+}
+function checkEnd(){
+  if(S.lives<=0){gameOver();return true;}
+  if(S.untimed&&S.routed>=S.goal){gameOver();return true;}
+  return false;
+}
+
+/* =============== LOOP =============== */
+let last=0;
+function loop(t){
+  if(!S.running) return;
+  const dt=Math.min((t-last)/1000,.05); last=t;
+  if(!S.paused){
+    S.spawnT+=dt*1000;
+    if(S.spawnT>S.spawnRate/S.speedMul && S.packets.length<4){
+      S.spawnT=0; spawnPacket();
+      S.spawnRate=Math.max(1400,2600-S.score*.4);
+      S.wave=Math.min(1+Math.floor(S.score/600),9); updHud();
+    }
+    const floor=arena.clientHeight;
+    S.packets.slice().forEach(p=>{
+      p.y+=S.baseSpeed*S.speedMul*(1+S.wave*.12)*dt;
+      p.el.style.top=p.y+'px';
+      if(p.y+p.el.offsetHeight>=floor-4){
+        S.lives--; S.combo=0; S.routed++;
+        showFeedback(false,`⏱ Missed: "${p.payload}"`,`It belonged to ${NAME[p.c]}. Tip: press P to pause, or choose Untimed mode when you start.`);
+        drawHearts(); removePacket(p); updHud();
+        checkEnd();
+      }
+    });
+  }
+  if(S.running) requestAnimationFrame(loop);
+}
+
+/* =============== PAUSE =============== */
+function pause(){
+  if(!S.running||S.paused) return;
+  S.paused=true; $('pause').classList.remove('hidden'); setInert(true); $('pauseTitle').focus();
+}
+function resume(){
+  if(!S.paused) return;
+  S.paused=false; $('pause').classList.add('hidden'); setInert(false);
+  last=performance.now(); (S.selected?S.selected.el:(lowest()?.el||$('pauseBtn'))).focus();
+}
+function setInert(on){$('wrap').inert=on; if(on) $('wrap').setAttribute('aria-hidden','true'); else $('wrap').removeAttribute('aria-hidden');}
+$('pauseBtn').onclick=()=>S.paused?resume():pause();
+$('resumeBtn').onclick=resume;
+$('quitBtn').onclick=()=>{$('pause').classList.add('hidden');gameOver();};
+
+/* =============== KEYBOARD =============== */
+document.addEventListener('keydown',e=>{
+  if(!S.running) return;
+  if(e.key==='Escape'&&S.paused){resume();return;}
+  if(!S.keys||e.ctrlKey||e.altKey||e.metaKey) return;
+  if(e.key==='p'||e.key==='P'){e.preventDefault();S.paused?resume():pause();return;}
+  if(S.paused) return;
+  const k=parseInt(e.key,10);
+  if(k>=1&&k<=4){
+    e.preventDefault();
+    const t=S.selected||lowest();
+    if(t) route(t,k-1); else say('No request to route yet.');
+  }
+});
+
+/* =============== SCREENS =============== */
+function start(){
+  const sp=parseFloat(document.querySelector('input[name=speed]:checked').value);
+  S.untimed=sp===0; S.speedMul=sp||1; S.keys=$('keysOn').checked;
+  $('pauseBtn').textContent=S.keys?'⏸ Pause (P)':'⏸ Pause';
+  if(!S.keys){$('pauseBtn').removeAttribute('aria-keyshortcuts');document.querySelectorAll('.portal').forEach(b=>{b.removeAttribute('aria-keyshortcuts');b.querySelector('.sr-only').textContent='';});}
+  $('progressStat').classList.toggle('hidden',!S.untimed);
+  $('start').classList.add('hidden'); setInert(false);
+  Object.assign(S,{running:true,paused:false,score:0,lives:3,combo:0,bestCombo:0,wave:1,spawnRate:2600,spawnT:0,packets:[],selected:null,correct:0,routed:0,deck:[]});
+  drawHearts(); updHud();
+  spawnPacket();
+  S.packets[0].el.focus();
+  last=performance.now(); requestAnimationFrame(loop);
+}
+function gameOver(){
+  if(!S.running) return;
+  S.running=false; S.paused=false;
+  S.packets.forEach(p=>p.el.remove()); S.packets=[];
+  $('finalScore').textContent=S.score;
+  $('endStats').textContent=`Correctly routed: ${S.correct} of ${S.routed} · Best combo: ${S.bestCombo}`;
+  const acc=S.routed?S.correct/S.routed:0;
+  let title,msg;
+  if(acc>=.9&&S.correct>=10){title='🏆 PEOPLE CHAMPION';msg='Excellent instincts. You know exactly where every request belongs.';}
+  else if(acc>=.75){title='🛡️ ROUTING PRO';msg='Strong awareness. Review when a case needs an HR specialist rather than your manager.';}
+  else if(acc>=.5){title='🧭 NAVIGATOR';msg='Good foundations. Remember: try self-service first, keep confidential cases with HR, and report misconduct formally.';}
+  else{title='🌱 NEWCOMER';msg='Have another go. Start with self-service, involve your manager for team matters, HR for personal or confidential cases, and the speak-up channel for misconduct.';}
+  $('endTitle').textContent=title; $('endMsg').textContent=msg;
+  setInert(true); $('end').classList.remove('hidden'); $('endTitle').focus();
+}
+$('startBtn').onclick=start;
+buildPortals(); drawHearts(); updHud();
+setInert(true); $('startTitle').focus();
+</script>
+</body>
+</html>
